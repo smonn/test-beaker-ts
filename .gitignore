@@ -1,0 +1,5 @@
+.venv
+.vscode
+app.json
+hellobeaker_client.ts
+node_modules
