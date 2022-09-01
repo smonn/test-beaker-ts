@@ -1,6 +1,6 @@
 import json
-from pyteal import *
-from beaker import Application, external
+from pyteal import abi, Concat, Bytes, Txn, Assert, Global
+from beaker import Application, external, delete
 
 
 class HelloBeaker(Application):
@@ -8,9 +8,13 @@ class HelloBeaker(Application):
     def hello(self, name: abi.String, *, output: abi.String):
         return output.set(Concat(Bytes("Hello, "), name.get()))
 
+    @delete
+    def delete(self):
+        return Assert(Txn.sender() == Global.creator_address())
+
 
 def build():
-    with open("app.json", "w") as f:
+    with open("./src/app.json", "w") as f:
         f.write(json.dumps(HelloBeaker().application_spec()))
 
 

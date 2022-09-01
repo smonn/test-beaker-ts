@@ -1,17 +1,37 @@
 import { getAccounts, getAlgodClient } from "beaker-ts";
+import type { SandboxAccount } from "beaker-ts/lib/sandbox/accounts";
 import { HelloBeaker } from "./hellobeaker_client";
 
-test("create app", async () => {
-  const account = (await getAccounts()).pop()!;
+jest.setTimeout(15000);
 
-  const hello = new HelloBeaker({
+let account: SandboxAccount | null;
+let app: HelloBeaker | null;
+let appId: number | null;
+let appAddr: string | null;
+
+beforeAll(async () => {
+  account = (await getAccounts()).pop()!;
+
+  app = new HelloBeaker({
     client: getAlgodClient(),
     signer: account.signer,
     sender: account.addr,
   });
 
-  const [appId, appAddr, txId] = await hello.create();
+  [appId, appAddr] = await app.create();
+});
 
-  console.log({ appId, appAddr, txId });
+afterAll(async () => {
+  await app?.delete();
+  app = appId = appAddr = account = null;
+});
+
+test("ensure appId and appAddr", () => {
   expect(appId).toBeDefined();
+  expect(appAddr).toBeDefined();
+});
+
+test("call hello", async () => {
+  const result = await app?.hello({ name: "World" });
+  expect(result?.returnValue).toBe("Hello, World");
 });
