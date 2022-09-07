@@ -1,20 +1,15 @@
 ## Get started
 
 ```sh
-# setup python env
-python3.10 -m venv venv && source venv/bin/activate
-
-# setup node env (assuming nvm is installed, otherwise be sure to use v16)
-nvm use
-
-# install dependencies (will install for both python and node.js)
-npm install
+# setup environment
+./setup.sh
+source venv/bin/activate
 
 # compile contract and build client
-npm run build
+./build.sh
 
 # run tests
-npm test
+./test.sh
 ```
 
 ## Notes

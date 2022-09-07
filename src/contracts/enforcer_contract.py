@@ -80,13 +80,13 @@ class Enforcer(Application):
     def create(self):
         return self.initialize_application_state()
 
-    @update
+    @update(authorize=Authorize.only(administrator))
     def update(self):
-        return Assert(Txn.sender() == self.administrator)
+        return Approve()
     
-    @delete
+    @delete(authorize=Authorize.only(administrator))
     def delete(self):
-        return Assert(Txn.sender() == self.administrator)
+        return Approve()
 
     @opt_in
     def opt_in(self):

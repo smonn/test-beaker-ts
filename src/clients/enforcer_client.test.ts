@@ -2,11 +2,12 @@ import algosdk from "algosdk";
 import { getAccounts, getAlgodClient } from "beaker-ts";
 import type { ApplicationState } from "beaker-ts/lib/application_client/state";
 import type { SandboxAccount } from "beaker-ts/lib/sandbox/accounts";
-import { Enforcer, RoyaltyPolicyTuple } from "./enforcer_client";
+import { Enforcer, OfferTuple, RoyaltyPolicyTuple } from "./enforcer_client";
+import { Marketplace } from "./marketplace_client";
 
 jest.setTimeout(60000);
 
-// const ZERO_ADDRESS = algosdk.encodeAddress(new Uint8Array(32));
+const ZERO_ADDRESS = algosdk.encodeAddress(new Uint8Array(32));
 
 interface GlobalState {
   admin: string;
@@ -196,6 +197,60 @@ test("happy path", async () => {
     royalty_basis: 500,
   });
 
+  // list asset for sale
+  const sellerMarketplace = new Marketplace({
+    client,
+    signer: admin.signer,
+    sender: admin.addr,
+  });
+
+  const [, marketplaceAppAddr] = await sellerMarketplace.create();
+
+  // let atc = new AtomicTransactionComposer();
+  const offer = new OfferTuple();
+  offer.auth_address = marketplaceAppAddr;
+  offer.amount = 1n;
+  const prevOffer = new OfferTuple();
+  prevOffer.auth_address = ZERO_ADDRESS;
+  prevOffer.amount = 0n;
+  // atc.addMethodCall({
+  //   suggestedParams: await client.getTransactionParams().do(),
+  //   signer: admin.signer,
+  //   sender: admin.addr,
+  //   appID: enforcerAppId,
+  //   method: adminEnforcer.methods.find((m) => m.name === "offer")!,
+  //   methodArgs: [assetId, Object.values(offer), Object.values(prevOffer)],
+  // });
+  // let group = atc.buildGroup();
+  const offerTxn: algosdk.TransactionWithSigner = {
+    signer: admin.signer,
+    txn: algosdk.makeApplicationCallTxnFromObject({
+      appIndex: enforcerAppId,
+      from: admin.addr,
+      onComplete: algosdk.OnApplicationComplete.NoOpOC,
+      suggestedParams: await client.getTransactionParams().do(),
+      appArgs: [
+        adminEnforcer.methods.find((m) => m.name === "offer")!.getSelector(),
+        algosdk.encodeUint64(assetId),
+        OfferTuple.codec.encode(Object.values(offer)),
+        OfferTuple.codec.encode(Object.values(prevOffer)),
+      ],
+    }),
+  };
+
+  console.log("offer txn type", offerTxn.txn.type);
+
+  await sellerMarketplace.list({
+    amount: 1n,
+    asset: BigInt(assetId),
+    app: BigInt(enforcerAppId),
+    offer_txn: offerTxn,
+    price: 1000000n,
+  });
+
+  console.log(await sellerMarketplace.getApplicationState());
+
+  await sellerMarketplace.delete();
   await adminEnforcer.delete();
 });
 
