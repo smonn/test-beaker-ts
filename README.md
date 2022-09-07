@@ -2,8 +2,7 @@
 
 ```sh
 # setup python env
-python3.10 -m venv .venv
-source .venv/bin/activate
+python3.10 -m venv venv && source venv/bin/activate
 
 # setup node env (assuming nvm is installed, otherwise be sure to use v16)
 nvm use

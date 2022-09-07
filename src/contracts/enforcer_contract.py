@@ -59,10 +59,12 @@ class Enforcer(Application):
 
     royalty_basis: Final[ApplicationStateValue] = ApplicationStateValue(
         stack_type=TealType.uint64,
+        default=Int(0)
     )
 
     royalty_receiver: Final[ApplicationStateValue] = ApplicationStateValue(
         stack_type=TealType.bytes,
+        default=Global.creator_address()
     )
 
     offers: Final[DynamicAccountStateValue] = DynamicAccountStateValue(
@@ -330,6 +332,7 @@ class Enforcer(Application):
                 Txn.sender() == offer_auth.get(),
                 royalty_asset_amount.get() <= offer_amount.get(),
                 payment_txn.get().receiver() == self.address,
+                self.royalty_receiver != Global.zero_address(),
                 royalty_receiver.address() == self.royalty_receiver,
             )
         )
@@ -387,6 +390,7 @@ class Enforcer(Application):
                 royalty_asset_amount.get() <= offer_amount.get(),
                 payment_txn.get().xfer_asset() == payment_asset.asset_id(),
                 payment_txn.get().asset_receiver() == self.address,
+                self.royalty_receiver != Global.zero_address(),
                 royalty_receiver.address() == self.royalty_receiver,
             )
         )
