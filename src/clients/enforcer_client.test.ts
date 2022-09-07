@@ -1,5 +1,5 @@
 import algosdk from "algosdk";
-import { getAccounts, getAlgodClient } from "beaker-ts";
+import * as bkr from "beaker-ts";
 import type { ApplicationState } from "beaker-ts/lib/application_client/state";
 import type { SandboxAccount } from "beaker-ts/lib/sandbox/accounts";
 import { Enforcer, OfferTuple, RoyaltyPolicyTuple } from "./enforcer_client";
@@ -126,8 +126,8 @@ function generateSandboxAccount(): SandboxAccount {
 }
 
 test("happy path", async () => {
-  const client = getAlgodClient();
-  const accounts = await getAccounts();
+  const client = bkr.sandbox.getAlgodClient();
+  const accounts = await bkr.sandbox.getAccounts();
   const admin = accounts.pop()!;
   const seller = accounts.pop()!;
   const buyer = accounts.pop()!;
@@ -238,7 +238,7 @@ test("happy path", async () => {
     }),
   };
 
-  console.log("offer txn type", offerTxn.txn.type);
+  // console.log("offer txn type", offerTxn.txn.type);
 
   await sellerMarketplace.list({
     amount: 1n,
