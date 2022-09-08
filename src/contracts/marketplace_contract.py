@@ -98,10 +98,10 @@ class Marketplace(Application):
         return Seq(
             app_addr := AppParam.address(app.application_id()),
             Assert(
-                check_rekey_zero(2),
+                check_rekey_zero(1),
                 check_self(
-                    group_size=Int(2),
-                    group_index=Int(1),
+                    group_size=Int(1),
+                    group_index=Int(0),
                 ),
                 And(
                     self.seller.get() == owner.address(),
@@ -142,6 +142,10 @@ def build():
     with open("./specs/marketplace.json", "w") as f:
         f.write(json.dumps(Marketplace().application_spec()))
 
+def compile():
+    with open("./specs/marketplace_contract.teal", "w") as f:
+        f.write(Marketplace().approval_program)
 
 if __name__ == "__main__":
     build()
+    compile()

@@ -1,4 +1,4 @@
-import algosdk from "algosdk";
+import algosdk, { AtomicTransactionComposer } from "algosdk";
 import * as bkr from "beaker-ts";
 import type { ApplicationState } from "beaker-ts/lib/application_client/state";
 import type { SandboxAccount } from "beaker-ts/lib/sandbox/accounts";
@@ -27,7 +27,7 @@ async function createTestAsset(
   client: algosdk.Algodv2,
   creator: SandboxAccount,
   enforcerAppAddr: string
-): Promise<number> {
+): Promise<[number, string]> {
   const atc = new algosdk.AtomicTransactionComposer();
 
   atc.addTransaction({
@@ -53,7 +53,7 @@ async function createTestAsset(
     .pendingTransactionInformation(result.txIDs[0]!)
     .do();
 
-  return info["asset-index"] as number;
+  return [info["asset-index"] as number, result.txIDs[0]!];
 }
 
 async function getApplicationState(
@@ -68,6 +68,19 @@ async function getApplicationState(
     royalty_receiver: algosdk.encodeAddress(
       readValue<Uint8Array>(state, "royalty_receiver")
     ),
+  };
+}
+
+async function getMarketplaceApplicationState(marketplaceApp: Marketplace) {
+  const state = await marketplaceApp.getApplicationState(true);
+  if (!state) return null;
+
+  return {
+    app_id: readValue<number>(state, "app_id"),
+    asset_id: readValue<number>(state, "asset_id"),
+    price: readValue<number>(state, "price"),
+    amount: readValue<number>(state, "amount"),
+    seller: algosdk.encodeAddress(readValue<Uint8Array>(state, "seller")),
   };
 }
 
@@ -171,7 +184,7 @@ test("happy path", async () => {
     buyerEnforcer.optIn(),
   ]);
 
-  const assetId = await createTestAsset(client, admin, enforcerAppAddr);
+  const [assetId] = await createTestAsset(client, admin, enforcerAppAddr);
   expect(assetId).toBeDefined();
 
   let enforcerAppState = await getApplicationState(adminEnforcer);
@@ -206,113 +219,43 @@ test("happy path", async () => {
 
   const [, marketplaceAppAddr] = await sellerMarketplace.create();
 
-  // let atc = new AtomicTransactionComposer();
+  let atc = new AtomicTransactionComposer();
   const offer = new OfferTuple();
   offer.auth_address = marketplaceAppAddr;
   offer.amount = 1n;
   const prevOffer = new OfferTuple();
   prevOffer.auth_address = ZERO_ADDRESS;
   prevOffer.amount = 0n;
-  // atc.addMethodCall({
-  //   suggestedParams: await client.getTransactionParams().do(),
-  //   signer: admin.signer,
-  //   sender: admin.addr,
-  //   appID: enforcerAppId,
-  //   method: adminEnforcer.methods.find((m) => m.name === "offer")!,
-  //   methodArgs: [assetId, Object.values(offer), Object.values(prevOffer)],
-  // });
-  // let group = atc.buildGroup();
-  const offerTxn: algosdk.TransactionWithSigner = {
+  atc.addMethodCall({
+    suggestedParams: await client.getTransactionParams().do(),
     signer: admin.signer,
-    txn: algosdk.makeApplicationCallTxnFromObject({
-      appIndex: enforcerAppId,
-      from: admin.addr,
-      onComplete: algosdk.OnApplicationComplete.NoOpOC,
-      suggestedParams: await client.getTransactionParams().do(),
-      appArgs: [
-        adminEnforcer.methods.find((m) => m.name === "offer")!.getSelector(),
-        algosdk.encodeUint64(assetId),
-        OfferTuple.codec.encode(Object.values(offer)),
-        OfferTuple.codec.encode(Object.values(prevOffer)),
-      ],
-    }),
-  };
-
-  // console.log("offer txn type", offerTxn.txn.type);
+    sender: admin.addr,
+    appID: enforcerAppId,
+    method: adminEnforcer.methods.find((m) => m.name === "offer")!,
+    methodArgs: [assetId, Object.values(offer), Object.values(prevOffer)],
+  });
+  let group = atc.buildGroup();
 
   await sellerMarketplace.list({
     amount: 1n,
     asset: BigInt(assetId),
     app: BigInt(enforcerAppId),
-    offer_txn: offerTxn,
+    offer_txn: group[0]!,
     price: 1000000n,
   });
 
-  console.log(await sellerMarketplace.getApplicationState());
+  const marketplaceState = await getMarketplaceApplicationState(
+    sellerMarketplace
+  );
+
+  expect(marketplaceState).toEqual({
+    app_id: enforcerAppId,
+    asset_id: assetId,
+    price: 1000000,
+    amount: 1,
+    seller: admin.addr,
+  });
 
   await sellerMarketplace.delete();
   await adminEnforcer.delete();
 });
-
-// test("ensure appId and appAddr", () => {
-//   expect(appId).toBeDefined();
-//   expect(appAddr).toBeDefined();
-// });
-
-// test("call set_administrator", async () => {
-//   const result = await app?.set_administrator({
-//     new_admin: account!.addr,
-//   });
-//   expect(result?.returnValue).toBeUndefined();
-//   const state = await getApplicationState();
-//   expect(state?.admin).toBe(account!.addr);
-// });
-
-// test("call get_administrator", async () => {
-//   const result = await app?.get_administrator();
-//   expect(result?.returnValue).toEqual(account!.addr);
-// });
-
-// test("call set_policy", async () => {
-//   const policy = new RoyaltyPolicyTuple();
-//   policy.basis = 500n;
-//   policy.receiver = account!.addr;
-//   const result = await app?.set_policy({
-//     royalty_policy: policy,
-//   });
-//   expect(result?.returnValue).toBeUndefined();
-//   const state = await getApplicationState();
-//   expect(state?.royalty_basis).toBe(500);
-//   expect(state?.royalty_receiver).toBe(account!.addr);
-// });
-
-// test("call offer", async () => {
-//   const assetId = await createAsset();
-//   const offer = new OfferTuple();
-//   offer.amount = 1n;
-//   offer.auth_address = account!.addr;
-
-//   // New offer, so amount should be 0 and auth addr should be the zero addr
-//   const prevOffer = new OfferTuple();
-//   prevOffer.amount = 0n;
-//   prevOffer.auth_address = algosdk.encodeAddress(new Uint8Array(32));
-
-//   const result = await app?.offer({
-//     offer,
-//     royalty_asset: BigInt(assetId),
-//     previous_offer: prevOffer,
-//   });
-
-//   expect(result?.returnValue).toBeUndefined();
-
-//   const offers = await getAccountState();
-//   expect(offers).toEqual({
-//     offers: [
-//       {
-//         asset_id: assetId,
-//         amount: 1,
-//         auth_address: account!.addr,
-//       },
-//     ],
-//   });
-// });

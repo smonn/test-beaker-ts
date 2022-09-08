@@ -433,8 +433,11 @@ class Enforcer(Application):
             balance := royalty_asset.holding(Txn.sender()).balance(),
             clawback := royalty_asset.params().clawback_address(),
             Assert(
-                check_rekey_zero(1),
-                check_self(),
+                check_rekey_zero(2),
+                check_self(
+                    group_index=Int(0),
+                    group_size=Int(2),
+                ),
                 balance.value() >= offer_amount.get(),
                 clawback.value() == self.address,
             ),
@@ -604,6 +607,11 @@ def build():
     with open("./specs/enforcer.json", "w") as f:
         f.write(json.dumps(Enforcer().application_spec()))
 
+def compile():
+    with open("./specs/enforcer_contract.teal", "w") as f:
+        f.write(Enforcer().approval_program)
+
 
 if __name__ == "__main__":
     build()
+    compile()
