@@ -324,6 +324,12 @@ class Enforcer(Application):
             (offer_amount := abi.Uint64()).set(offer.amount),
             (offer_auth := abi.Address()).set(offer.auth_address),
             Assert(
+                Txn.group_index() == Int(1),
+            ),
+            Assert(
+                Global.group_size() == Int(2),
+            ),
+            Assert(
                 check_rekey_zero(2),
                 check_self(
                     group_index=Int(1),
@@ -383,7 +389,7 @@ class Enforcer(Application):
             Assert(
                 check_rekey_zero(2),
                 check_self(
-                    group_index=Int(1),
+                    group_index=Int(0),
                     group_size=Int(2),
                 ),
                 Txn.sender() == offer_auth.get(),

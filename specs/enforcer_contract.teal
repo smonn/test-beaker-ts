@@ -1506,6 +1506,14 @@ store 167
 load 166
 extract 0 32
 store 168
+txn GroupIndex
+intc_1 // 1
+==
+assert
+global GroupSize
+pushint 2 // 2
+==
+assert
 gtxn 0 RekeyTo
 global ZeroAddress
 ==
@@ -1608,7 +1616,7 @@ global GroupSize
 pushint 2 // 2
 ==
 txn GroupIndex
-intc_1 // 1
+intc_0 // 0
 ==
 &&
 assert

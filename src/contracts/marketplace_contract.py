@@ -97,11 +97,12 @@ class Marketplace(Application):
     def buy(self, asset: abi.Asset, app: abi.Application, owner: abi.Account, royalty_account: abi.Account, amount: abi.Uint64, pay_txn: abi.PaymentTransaction):
         return Seq(
             app_addr := AppParam.address(app.application_id()),
+            (offered_amount := abi.Uint64()).set(self.amount.get()),
             Assert(
-                check_rekey_zero(1),
+                check_rekey_zero(2),
                 check_self(
-                    group_size=Int(1),
-                    group_index=Int(0),
+                    group_size=Int(2),
+                    group_index=Int(1),
                 ),
                 And(
                     self.seller.get() == owner.address(),
@@ -125,9 +126,13 @@ class Marketplace(Application):
                         TxnField.type_enum: TxnType.Payment,
                         TxnField.receiver: app_addr.value(),
                         TxnField.amount: pay_txn.get().amount(),
+                        TxnField.fee: Int(0),
                     },
-                    self.amount.get()
-                ]
+                    offered_amount
+                ],
+                extra_fields={
+                    TxnField.fee: Int(5000)
+                }
             ),
             self.amount.set(Int(0)),
             self.price.set(Int(0)),

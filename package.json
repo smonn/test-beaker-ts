@@ -9,12 +9,12 @@
   "devDependencies": {
     "@tsconfig/node16-strictest": "^1.0.3",
     "@types/jest": "^29.0.0",
-    "@types/node": "^18.7.15",
+    "@types/node": "^18.7.16",
     "beaker-ts": "^0.0.25",
     "jest": "^29.0.2",
-    "ts-jest": "^28.0.8",
+    "ts-jest": "^29.0.0",
     "ts-node": "^10.9.1",
-    "typescript": "^4.8.2"
+    "typescript": "^4.8.3"
   },
   "dependencies": {
     "algosdk": "^1.20.0"

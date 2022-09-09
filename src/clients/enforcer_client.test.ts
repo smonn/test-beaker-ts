@@ -5,7 +5,7 @@ import type { SandboxAccount } from "beaker-ts/lib/sandbox/accounts";
 import { Enforcer, OfferTuple, RoyaltyPolicyTuple } from "./enforcer_client";
 import { Marketplace } from "./marketplace_client";
 
-jest.setTimeout(60000);
+jest.setTimeout(120000);
 
 const ZERO_ADDRESS = algosdk.encodeAddress(new Uint8Array(32));
 
@@ -56,7 +56,7 @@ async function createTestAsset(
   return [info["asset-index"] as number, result.txIDs[0]!];
 }
 
-async function getApplicationState(
+async function getEnforcerApplicationState(
   enforcerApp: Enforcer
 ): Promise<GlobalState | null> {
   const state = await enforcerApp.getApplicationState(true);
@@ -84,51 +84,6 @@ async function getMarketplaceApplicationState(marketplaceApp: Marketplace) {
   };
 }
 
-// async function getAccountState() {
-//   const state = await app?.getAccountState(account!.addr, true);
-//   if (!state) return null;
-
-//   const keys = Object.keys(state);
-//   return {
-//     offers: keys.map((key) => ({
-//       asset_id: algosdk.decodeUint64(Buffer.from(key, "hex"), "safe"),
-//       amount: algosdk.decodeUint64(
-//         (state[key] as Uint8Array).subarray(32),
-//         "safe"
-//       ),
-//       auth_address: algosdk.encodeAddress(
-//         (state[key] as Uint8Array).subarray(0, 32)
-//       ),
-//     })),
-//   };
-// }
-
-// beforeAll(async () => {
-//   account = (await getAccounts()).pop()!;
-
-//   app = new Enforcer({
-//     client: getAlgodClient(),
-//     signer: account.signer,
-//     sender: account.addr,
-//   });
-
-//   [appId, appAddr] = await app.create({
-//     extraPages: 3,
-//     appGlobalByteSlices: 63,
-//     appGlobalInts: 1,
-//     appLocalByteSlices: 16,
-//   });
-
-//   await app.optIn({
-//     from: account.addr,
-//   });
-// });
-
-// afterAll(async () => {
-//   await app?.delete();
-//   app = appId = appAddr = account = null;
-// });
-
 function generateSandboxAccount(): SandboxAccount {
   const account = algosdk.generateAccount();
   return {
@@ -143,11 +98,44 @@ test("happy path", async () => {
   const accounts = await bkr.sandbox.getAccounts();
   const admin = accounts.pop()!;
   const seller = accounts.pop()!;
-  const buyer = accounts.pop()!;
+  const buyer = generateSandboxAccount();
   const royaltyReceiver = generateSandboxAccount();
+  let atc: AtomicTransactionComposer;
 
-  // getAccountState();
-  // getApplicationState();
+  // Ensure royalty receiver has min funds
+  atc = new AtomicTransactionComposer();
+  atc.addTransaction({
+    signer: admin.signer,
+    txn: algosdk.makePaymentTxnWithSuggestedParamsFromObject({
+      suggestedParams: await client.getTransactionParams().do(),
+      from: admin.addr,
+      to: royaltyReceiver.addr,
+      amount: 100000,
+    }),
+  });
+  await atc.execute(client, 5);
+
+  // Ensure buyer has funds
+  atc = new AtomicTransactionComposer();
+  atc.addTransaction({
+    signer: admin.signer,
+    txn: algosdk.makePaymentTxnWithSuggestedParamsFromObject({
+      suggestedParams: await client.getTransactionParams().do(),
+      from: admin.addr,
+      to: buyer.addr,
+      amount: 10000000,
+    }),
+  });
+  // Opt-out of staking rewards for easier balance checks
+  atc.addTransaction({
+    signer: buyer.signer,
+    txn: algosdk.makeKeyRegistrationTxnWithSuggestedParamsFromObject({
+      suggestedParams: await client.getTransactionParams().do(),
+      from: buyer.addr,
+      nonParticipation: true,
+    }),
+  });
+  await atc.execute(client, 5);
 
   const adminEnforcer = new Enforcer({
     client,
@@ -163,13 +151,25 @@ test("happy path", async () => {
     appLocalByteSlices: 16,
   });
 
+  // Ensure royalty enforcer has min funds
+  atc = new AtomicTransactionComposer();
+  atc.addTransaction({
+    signer: admin.signer,
+    txn: algosdk.makePaymentTxnWithSuggestedParamsFromObject({
+      suggestedParams: await client.getTransactionParams().do(),
+      from: admin.addr,
+      to: enforcerAppAddr,
+      amount: 100000,
+    }),
+  });
+  await atc.execute(client, 5);
+
   const sellerEnforcer = new Enforcer({
     client,
     signer: seller.signer,
     sender: seller.addr,
     appId: enforcerAppId,
   });
-
   const buyerEnforcer = new Enforcer({
     client,
     signer: buyer.signer,
@@ -187,7 +187,7 @@ test("happy path", async () => {
   const [assetId] = await createTestAsset(client, admin, enforcerAppAddr);
   expect(assetId).toBeDefined();
 
-  let enforcerAppState = await getApplicationState(adminEnforcer);
+  let enforcerAppState = await getEnforcerApplicationState(adminEnforcer);
 
   expect(enforcerAppState).toEqual({
     admin: admin.addr,
@@ -203,7 +203,7 @@ test("happy path", async () => {
     royalty_policy: policy,
   });
 
-  enforcerAppState = await getApplicationState(adminEnforcer);
+  enforcerAppState = await getEnforcerApplicationState(adminEnforcer);
   expect(enforcerAppState).toEqual({
     admin: admin.addr,
     royalty_receiver: royaltyReceiver.addr,
@@ -217,9 +217,23 @@ test("happy path", async () => {
     sender: admin.addr,
   });
 
-  const [, marketplaceAppAddr] = await sellerMarketplace.create();
+  const [marketplaceAppId, marketplaceAppAddr] =
+    await sellerMarketplace.create();
 
-  let atc = new AtomicTransactionComposer();
+  // Send min balance + margin to marketplace app
+  atc = new AtomicTransactionComposer();
+  atc.addTransaction({
+    signer: admin.signer,
+    txn: algosdk.makePaymentTxnWithSuggestedParamsFromObject({
+      from: admin.addr,
+      to: marketplaceAppAddr,
+      amount: 2e5,
+      suggestedParams: await client.getTransactionParams().do(),
+    }),
+  });
+  await atc.execute(client, 5);
+
+  atc = new AtomicTransactionComposer();
   const offer = new OfferTuple();
   offer.auth_address = marketplaceAppAddr;
   offer.amount = 1n;
@@ -244,7 +258,7 @@ test("happy path", async () => {
     price: 1000000n,
   });
 
-  const marketplaceState = await getMarketplaceApplicationState(
+  let marketplaceState = await getMarketplaceApplicationState(
     sellerMarketplace
   );
 
@@ -255,6 +269,71 @@ test("happy path", async () => {
     amount: 1,
     seller: admin.addr,
   });
+
+  // purchase listing
+  const { amount: buyerBalanceBefore } = await client
+    .accountInformation(buyer.addr)
+    .do();
+
+  const buyerMarketplace = new Marketplace({
+    client,
+    signer: buyer.signer,
+    sender: buyer.addr,
+    appId: marketplaceAppId,
+  });
+
+  // Opt-in to asset
+  atc = new AtomicTransactionComposer();
+  atc.addTransaction({
+    signer: buyer.signer,
+    txn: algosdk.makeAssetTransferTxnWithSuggestedParamsFromObject({
+      suggestedParams: await client.getTransactionParams().do(),
+      from: buyer.addr,
+      to: buyer.addr,
+      amount: 0,
+      assetIndex: assetId,
+    }),
+  });
+  await atc.execute(client, 5);
+
+  // Construct payment txn
+  atc = new AtomicTransactionComposer();
+  atc.addTransaction({
+    signer: buyer.signer,
+    txn: algosdk.makePaymentTxnWithSuggestedParamsFromObject({
+      suggestedParams: await client.getTransactionParams().do(),
+      from: buyer.addr,
+      to: marketplaceAppAddr,
+      amount: 1000000n,
+    }),
+  });
+  group = atc.buildGroup();
+
+  // Complete purchase
+  await buyerMarketplace.buy({
+    asset: BigInt(assetId),
+    app: BigInt(enforcerAppId),
+    amount: 1n,
+    owner: admin.addr,
+    pay_txn: group[0]!,
+    royalty_account: royaltyReceiver.addr,
+  });
+
+  marketplaceState = await getMarketplaceApplicationState(sellerMarketplace);
+
+  expect(marketplaceState).toEqual({
+    app_id: 0,
+    asset_id: 0,
+    price: 0,
+    amount: 0,
+    seller: ZERO_ADDRESS,
+  });
+
+  const { amount: buyerBalanceAfter } = await client
+    .accountInformation(buyer.addr)
+    .do();
+
+  expect(buyerBalanceBefore - buyerBalanceAfter).toEqual(1003000);
 
   await sellerMarketplace.delete();
   await adminEnforcer.delete();
